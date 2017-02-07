@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using System.Diagnostics;
+using Newtonsoft.Json;
 
 namespace RawStuff
 {
@@ -263,12 +264,19 @@ namespace RawStuff
         /// <param name="hwnd">Handle of the window listening for key presses</param>
         public InputDevice(IntPtr hwnd)
         {
-            RAWINPUTDEVICE[] rid = new RAWINPUTDEVICE[1];
+            RAWINPUTDEVICE[] rid = new RAWINPUTDEVICE[2];
 
+            // 키보드
             rid[0].usUsagePage = 0x01;
             rid[0].usUsage = 0x06;
             rid[0].dwFlags = RIDEV_INPUTSINK;
             rid[0].hwndTarget = hwnd;
+
+            // 마우스
+            rid[1].usUsagePage = 0x01;
+            rid[1].usUsage = 0x02;
+            rid[1].dwFlags = RIDEV_INPUTSINK;
+            rid[1].hwndTarget = hwnd;
 
             if (!RegisterRawInputDevices(rid, (uint)rid.Length, (uint)Marshal.SizeOf(rid[0])))
             {
@@ -380,7 +388,7 @@ namespace RawStuff
 
                         //If the device is identified as a keyboard or HID device,
                         //create a DeviceInfo object to store information about it
-                        if (rid.dwType == RIM_TYPEKEYBOARD || rid.dwType == RIM_TYPEHID)
+                        //if (rid.dwType == RIM_TYPEKEYBOARD || rid.dwType == RIM_TYPEHID)
                         {
                             DeviceInfo dInfo = new DeviceInfo();
 
@@ -398,7 +406,7 @@ namespace RawStuff
                             //If it is a keyboard and it isn't already in the list,
                             //add it to the deviceList hashtable and increase the
                             //NumberOfDevices count
-                            if (!deviceList.Contains(rid.hDevice) && IsKeyboardDevice)
+                            //if (!deviceList.Contains(rid.hDevice) && IsKeyboardDevice)
                             {
                                 NumberOfDevices++;
                                 deviceList.Add(rid.hDevice, dInfo);
@@ -457,11 +465,22 @@ namespace RawStuff
 
                     RAWINPUT raw = (RAWINPUT)Marshal.PtrToStructure(buffer, typeof(RAWINPUT));
 
-                    if (raw.header.dwType == RIM_TYPEKEYBOARD)
+                    Trace.TraceInformation($"raw : {JsonConvert.SerializeObject(raw, Formatting.Indented)}");
+
+                    if (deviceList.Contains(raw.header.hDevice))
+                    {
+                        var dInfo = (DeviceInfo)deviceList[raw.header.hDevice];
+                        Trace.TraceInformation($"dInfo : {JsonConvert.SerializeObject(dInfo, Formatting.Indented)}");
+                    }
+
+                    if (raw.header.dwType == RIM_TYPEMOUSE)
+                    {
+                    }
+                    else if (raw.header.dwType == RIM_TYPEKEYBOARD)
                     {
                         Trace.TraceInformation($"raw.keyboard.Message : {raw.keyboard.Message}");
 
-                        if (raw.keyboard.Message < 100 )
+                        if (raw.keyboard.Message < 100)
                         //if (raw.keyboard.Message == WM_KEYDOWN || raw.keyboard.Message == WM_SYSKEYDOWN)
                         {
                             // Retrieve information about the keystroke
@@ -562,10 +581,11 @@ namespace RawStuff
             switch (message.Msg)
             {
                 case WM_INPUT:
-                {
-                    ProcessInputCommand(message);
-                }
-                break;
+                    {
+                        Trace.TraceInformation("WM_INPUT 발생 !!!");
+                        ProcessInputCommand(message);
+                    }
+                    break;
             }
         }
 
@@ -585,10 +605,10 @@ namespace RawStuff
             string deviceType;
             switch (device)
             {
-                case RIM_TYPEMOUSE:    deviceType = "MOUSE";    break;
+                case RIM_TYPEMOUSE: deviceType = "MOUSE"; break;
                 case RIM_TYPEKEYBOARD: deviceType = "KEYBOARD"; break;
-                case RIM_TYPEHID:      deviceType = "HID";      break;
-                default:               deviceType = "UNKNOWN";  break;
+                case RIM_TYPEHID: deviceType = "HID"; break;
+                default: deviceType = "UNKNOWN"; break;
             }
             return deviceType;
         }
