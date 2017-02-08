@@ -13,24 +13,25 @@ namespace RawStuff
     {
         #region const definitions
 
-        private const int RIDEV_INPUTSINK = 0x00000100;
-        private const int RID_INPUT = 0x10000003;
+        public const int RIDEV_REMOVE = 0x00000001;
+        public const int RIDEV_INPUTSINK = 0x00000100;
+        public const int RIDEV_NOLEGACY = 0x00000030;
+        public const int RID_INPUT = 0x10000003;
 
-        private const int FAPPCOMMAND_MASK = 0xF000;
-        private const int FAPPCOMMAND_MOUSE = 0x8000;
-        private const int FAPPCOMMAND_OEM = 0x1000;
-
-        private const int RIM_TYPEMOUSE = 0;
-        private const int RIM_TYPEKEYBOARD = 1;
-        private const int RIM_TYPEHID = 2;
-
-        private const int RIDI_DEVICENAME = 0x20000007;
-
-        private const int WM_KEYDOWN = 0x0100;
-        private const int WM_SYSKEYDOWN = 0x0104;
-        private const int WM_INPUT = 0x00FF;
-        private const int VK_OEM_CLEAR = 0xFE;
-        private const int VK_LAST_KEY = VK_OEM_CLEAR; // this is a made up value used as a sentinal
+        public const int FAPPCOMMAND_MASK = 0xF000;
+        public const int FAPPCOMMAND_MOUSE = 0x8000;
+        public const int FAPPCOMMAND_OEM = 0x1000;
+        
+        public const int RIM_TYPEMOUSE = 0;
+        public const int RIM_TYPEKEYBOARD = 1;
+        public const int RIM_TYPEHID = 2;
+        
+        public const int RIDI_DEVICENAME = 0x20000007;
+        
+        public const int WM_SYSKEYDOWN = 0x0104;
+        public const int WM_INPUT = 0x00FF;
+        public const int VK_OEM_CLEAR = 0xFE;
+        public const int VK_LAST_KEY = VK_OEM_CLEAR; // this is a made up value used as a sentinal
 
         #endregion const definitions
 
@@ -78,7 +79,7 @@ namespace RawStuff
         }
 #else
         [StructLayout(LayoutKind.Explicit)]
-        internal struct RAWINPUT
+        public struct RAWINPUT
         {
             [FieldOffset(0)]
             public RAWINPUTHEADER header;
@@ -91,7 +92,7 @@ namespace RawStuff
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct RAWINPUTHEADER
+        public struct RAWINPUTHEADER
         {
             [MarshalAs(UnmanagedType.U4)]
             public int dwType;
@@ -104,7 +105,7 @@ namespace RawStuff
 #endif
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct RAWHID
+        public struct RAWHID
         {
             [MarshalAs(UnmanagedType.U4)]
             public int dwSizHid;
@@ -113,7 +114,7 @@ namespace RawStuff
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct BUTTONSSTR
+        public struct BUTTONSSTR
         {
             [MarshalAs(UnmanagedType.U2)]
             public ushort usButtonFlags;
@@ -122,7 +123,7 @@ namespace RawStuff
         }
 
         [StructLayout(LayoutKind.Explicit)]
-        internal struct RAWMOUSE
+        public struct RAWMOUSE
         {
             [MarshalAs(UnmanagedType.U2)]
             [FieldOffset(0)]
@@ -145,7 +146,7 @@ namespace RawStuff
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct RAWKEYBOARD
+        public struct RAWKEYBOARD
         {
             [MarshalAs(UnmanagedType.U2)]
             public ushort MakeCode;
@@ -162,7 +163,7 @@ namespace RawStuff
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct RAWINPUTDEVICE
+        public struct RAWINPUTDEVICE
         {
             [MarshalAs(UnmanagedType.U2)]
             public ushort usUsagePage;
@@ -215,47 +216,12 @@ namespace RawStuff
         /// Key: the device handle
         /// Value: the device info class
         /// </summary>
-        private Hashtable deviceList = new Hashtable();
-
-        //Event and delegate
-        public delegate void DeviceEventHandler(object sender, KeyControlEventArgs e);
-        public event DeviceEventHandler KeyPressed;
-
-        /// <summary>
-        /// Arguments provided by the handler for the KeyPressed
-        /// event.
-        /// </summary>
-        public class KeyControlEventArgs : EventArgs
-        {
-            private DeviceInfo m_deviceInfo;
-            private DeviceType m_device;
-
-            public KeyControlEventArgs(DeviceInfo dInfo, DeviceType device)
-            {
-                m_deviceInfo = dInfo;
-                m_device = device;
-            }
-
-            public KeyControlEventArgs()
-            {
-            }
-
-            public DeviceInfo Keyboard
-            {
-                get { return m_deviceInfo; }
-                set { m_deviceInfo = value; }
-            }
-
-            public DeviceType Device
-            {
-                get { return m_device; }
-                set { m_device = value; }
-            }
-        }
-
+        private Hashtable _deviceList = new Hashtable();
         #endregion Variables and event handling
 
         #region InputDevice( IntPtr hwnd )
+
+        private IntPtr _hwnd;
 
         /// <summary>
         /// InputDevice constructor; registers the raw input devices
@@ -264,24 +230,63 @@ namespace RawStuff
         /// <param name="hwnd">Handle of the window listening for key presses</param>
         public InputDevice(IntPtr hwnd)
         {
-            RAWINPUTDEVICE[] rid = new RAWINPUTDEVICE[2];
+            _hwnd = hwnd;
+        }
 
-            // 키보드
-            rid[0].usUsagePage = 0x01;
-            rid[0].usUsage = 0x06;
-            rid[0].dwFlags = RIDEV_INPUTSINK;
-            rid[0].hwndTarget = hwnd;
-
-            // 마우스
-            rid[1].usUsagePage = 0x01;
-            rid[1].usUsage = 0x02;
-            rid[1].dwFlags = RIDEV_INPUTSINK;
-            rid[1].hwndTarget = hwnd;
-
-            if (!RegisterRawInputDevices(rid, (uint)rid.Length, (uint)Marshal.SizeOf(rid[0])))
+        public void RegisterRawInputDevices(bool keyboard, bool mouse)
+        {
             {
-                throw new ApplicationException("Failed to register raw input device(s).");
+                var ridList = new RAWINPUTDEVICE[2];
+
+                // 키보드
+                ridList[0].usUsagePage = 0x01;
+                ridList[0].usUsage = 0x06;
+                ridList[0].dwFlags = RIDEV_REMOVE;
+                ridList[0].hwndTarget = IntPtr.Zero;
+
+                // 마우스
+                ridList[1].usUsagePage = 0x01;
+                ridList[1].usUsage = 0x02;
+                ridList[1].dwFlags = RIDEV_REMOVE;
+                ridList[1].hwndTarget = IntPtr.Zero;
+
+                if (!RegisterRawInputDevices(ridList, (uint)ridList.Length, (uint)Marshal.SizeOf(ridList[0])))
+                {
+                    throw new ApplicationException("Failed to register raw input device(s).");
+                }
             }
+
+            {
+                var ridList = new RAWINPUTDEVICE[2];
+                var idx = 0;
+
+                if (keyboard)
+                {
+                    // 키보드
+                    ridList[idx].usUsagePage = 0x01;
+                    ridList[idx].usUsage = 0x06;
+                    ridList[idx].dwFlags = RIDEV_INPUTSINK;
+                    ridList[idx].hwndTarget = _hwnd;
+                    idx++;
+                }
+
+                if (mouse)
+                {
+                    // 마우스
+                    ridList[idx].usUsagePage = 0x01;
+                    ridList[idx].usUsage = 0x02;
+                    ridList[idx].dwFlags = RIDEV_INPUTSINK;
+                    ridList[idx].hwndTarget = _hwnd;
+                    idx++;
+                }
+
+                if (!RegisterRawInputDevices(ridList, (uint)idx, (uint)Marshal.SizeOf(ridList[0])))
+                {
+                    throw new ApplicationException("Failed to register raw input device(s).");
+                }
+            }
+
+            _EnumerateDevices();
         }
 
         #endregion InputDevice( IntPtr hwnd )
@@ -349,9 +354,9 @@ namespace RawStuff
         /// counting keyboard devices and adding them to deviceList.
         /// </summary>
         /// <returns>The number of keyboard devices found.</returns>
-        public int EnumerateDevices()
+        private int _EnumerateDevices()
         {
-
+            _deviceList.Clear();
             int NumberOfDevices = 0;
             uint deviceCount = 0;
             int dwSize = (Marshal.SizeOf(typeof(RAWINPUTDEVICELIST)));
@@ -409,11 +414,13 @@ namespace RawStuff
                             //if (!deviceList.Contains(rid.hDevice) && IsKeyboardDevice)
                             {
                                 NumberOfDevices++;
-                                deviceList.Add(rid.hDevice, dInfo);
+                                _deviceList.Add(rid.hDevice, dInfo);
                             }
                         }
                         Marshal.FreeHGlobal(pData);
                     }
+
+
                 }
 
                 Marshal.FreeHGlobal(pRawInputDeviceList);
@@ -464,72 +471,14 @@ namespace RawStuff
                     // processing it to raise an appropriate KeyPressed event.
 
                     RAWINPUT raw = (RAWINPUT)Marshal.PtrToStructure(buffer, typeof(RAWINPUT));
+                    DeviceInfo dInfo = null;
 
-                    Trace.TraceInformation($"raw : {JsonConvert.SerializeObject(raw, Formatting.Indented)}");
-
-                    if (deviceList.Contains(raw.header.hDevice))
+                    if (_deviceList.Contains(raw.header.hDevice))
                     {
-                        var dInfo = (DeviceInfo)deviceList[raw.header.hDevice];
-                        Trace.TraceInformation($"dInfo : {JsonConvert.SerializeObject(dInfo, Formatting.Indented)}");
+                        dInfo = (DeviceInfo)_deviceList[raw.header.hDevice];
                     }
 
-                    if (raw.header.dwType == RIM_TYPEMOUSE)
-                    {
-                    }
-                    else if (raw.header.dwType == RIM_TYPEKEYBOARD)
-                    {
-                        Trace.TraceInformation($"raw.keyboard.Message : {raw.keyboard.Message}");
-
-                        if (raw.keyboard.Message < 100)
-                        //if (raw.keyboard.Message == WM_KEYDOWN || raw.keyboard.Message == WM_SYSKEYDOWN)
-                        {
-                            // Retrieve information about the keystroke
-                            ushort key = raw.keyboard.VKey;
-
-                            // On most keyboards, "extended" keys such as the arrow or page 
-                            // keys return two codes - the key's own code, and an "extended key" flag, which
-                            // translates to 255. This flag isn't useful to us, so it can be
-                            // disregarded.
-                            if (key > VK_LAST_KEY)
-                            {
-                                return;
-                            }
-
-                            Keys myKey;  // Keys is defined in System.Windows.Forms 
-                            int vkey;
-
-                            vkey = raw.keyboard.VKey;
-
-                            myKey = (Keys)Enum.Parse(typeof(Keys), Enum.GetName(typeof(Keys), vkey));
-
-                            // Retrieve information about the device
-                            DeviceInfo dInfo = null;
-
-                            if (deviceList.Contains(raw.header.hDevice))
-                            {
-                                dInfo = (DeviceInfo)deviceList[raw.header.hDevice];
-
-                                dInfo.vKey = myKey.ToString();
-                                dInfo.key = key;
-                            }
-                            else
-                            {
-                                Console.WriteLine("Handle :{0} was not in hashtable", raw.header.hDevice);
-                                Console.WriteLine("Maybe this device supports more than one handle or usage page.");
-                                Console.WriteLine("This is probably not a standard keyboard.");
-                            }
-
-                            if (KeyPressed != null && dInfo != null)
-                            {
-                                KeyPressed(this, new KeyControlEventArgs(dInfo, GetDevice(message.LParam.ToInt32())));
-                            }
-                            else
-                            {
-                                Console.WriteLine("Received Unknown Key: {0}", key);
-                                Console.WriteLine("Possibly an Unknown device");
-                            }
-                        }
-                    }
+                    this.RAWINPUT_EventCalled?.Invoke(dInfo, raw);
                 }
             }
             finally
@@ -539,6 +488,8 @@ namespace RawStuff
         }
 
         #endregion ProcessInputCommand( Message message )
+
+        public event Action<DeviceInfo, RAWINPUT> RAWINPUT_EventCalled;
 
         #region DeviceType GetDevice( int param )
 
@@ -578,11 +529,13 @@ namespace RawStuff
         /// <param name="message">The Windows message.</param>
         public void ProcessMessage(Message message)
         {
+            Trace.TraceInformation("ProcessMessage message.Msg : 0x{0:x},", message.Msg);
+
             switch (message.Msg)
             {
                 case WM_INPUT:
                     {
-                        Trace.TraceInformation("WM_INPUT 발생 !!!");
+                        Trace.TraceInformation("ProcessMessage WM_INPUT 발생 !!!");
                         ProcessInputCommand(message);
                     }
                     break;
